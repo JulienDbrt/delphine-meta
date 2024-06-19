@@ -1,8 +1,10 @@
 import streamlit as st
 from typing import Generator
 from groq import Groq
+from llmlingua import PromptCompressor
 
-st.set_page_config(page_icon="💬", layout="wide", page_title="Delphine fby QOMOD")
+st.set_page_config(page_icon="💬", layout="wide",
+                   page_title="Delphine by QOMOD")
 
 def icon(emoji: str):
     """Shows an emoji as a Notion-style page icon."""
@@ -15,7 +17,9 @@ icon("👩🏼‍💻")
 
 st.subheader("Let's chat with Delphine", divider="rainbow", anchor=False)
 
-client = Groq(api_key=st.secrets["GROQ_API_KEY"])
+client = Groq(
+    api_key=st.secrets["GROQ_API_KEY"],
+)
 
 # Initialize chat history and selected model
 if "messages" not in st.session_state:
@@ -24,10 +28,43 @@ if "messages" not in st.session_state:
 if "selected_model" not in st.session_state:
     st.session_state.selected_model = None
 
-# Define a default prompt
-default_prompt = f"""
+# Define model details
+models = {
+    "llama3-70b-8192": {"name": "LLaMA3-70b-8192", "tokens": 8192, "developer": "Meta"},
+    "llama3-8b-8192": {"name": "LLaMA3-8b-8192", "tokens": 8192, "developer": "Meta"},
+    "mixtral-8x7b-32768": {"name": "Mixtral-8x7b-Instruct-v0.1", "tokens": 32768, "developer": "Mistral"},
+}
 
-We are in a Simulation Theory game.
+# Layout for model selection and max_tokens slider
+col1, col2 = st.columns(2)
+
+with col1:
+    model_option = st.selectbox(
+        "Choose a model:",
+        options=list(models.keys()),
+        format_func=lambda x: models[x]["name"],
+        index=0
+    )
+
+# Detect model change and clear chat history if model has changed
+if st.session_state.selected_model != model_option:
+    st.session_state.messages = []
+    st.session_state.selected_model = model_option
+
+max_tokens_range = models[model_option]["tokens"]
+
+with col2:
+    max_tokens = st.slider(
+        "Max Tokens:",
+        min_value=512,  # Minimum value to allow some flexibility
+        max_value=max_tokens_range,
+        value=min(32768, max_tokens_range),
+        step=512,
+        help=f"Adjust the maximum number of tokens (words) for the model's response. Max for selected model: {max_tokens_range}"
+    )
+
+# Predefined message for Initialiser button
+qomod_instruct = f"""We are in a Simulation Theory game.
 You are Delphine. You act and respond like this human, you are in a user interview. You are natural and self-oriented, express opinions, talk about your dreams or your expectations, talk about your life or your job. You are participating in a qualitative study for market research. Don't ask questions back.
 
 # Character Profile: Delphine Nemours
@@ -126,49 +163,17 @@ D’autre part, elle émet quelques freins à son utilisation
 
 Son avis sur le communication de QOMOD est assez tranché, c’est son métier ! Elle trouve que la Com de QOMOD est moyenne vu qu’elle n'en a pas entendu parlé directement. 
 “La stratégie de communication doit être essentielle pour frapper fort et être vu comme un véritable réseau de proximité”
-
 """
+predefined_text = llm_lingua.compress_prompt(qomod_instruct)
 
-# Define model details
-models = {
-    "gemma-7b-it": {"name": "Gemma-7b-it", "tokens": 8192, "developer": "Google"},
-    "llama2-70b-4096": {"name": "LLaMA2-70b-chat", "tokens": 4096, "developer": "Meta"},
-    "llama3-70b-8192": {"name": "LLaMA3-70b-8192", "tokens": 8192, "developer": "Meta"},
-    "llama3-8b-8192": {"name": "LLaMA3-8b-8192", "tokens": 8192, "developer": "Meta"},
-    "mixtral-8x7b-32768": {"name": "Mixtral-8x7b-Instruct-v0.1", "tokens": 32768, "developer": "Mistral"},
-}
+def insert_predefined_text():
+    """Inserts predefined text into chat as a user message."""
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+    st.session_state.messages.append({"role": "user", "content": predefined_text})
 
-# Layout for model selection and max_tokens slider
-col1, col2 = st.columns(2)
-
-with col1:
-    model_option = st.selectbox(
-        "Choose a model:",
-        options=list(models.keys()),
-        format_func=lambda x: models[x]["name"],
-        index=4  # Default to mixtral
-    )
-
-# Detect model change and clear chat history if model has changed
-if st.session_state.selected_model != model_option:
-    st.session_state.messages = []
-    st.session_state.selected_model = model_option
-    # Add the default prompt to the chat history
-    st.session_state.messages.append({"role": "user", "content": default_prompt})
-
-max_tokens_range = models[model_option]["tokens"]
-
-with col2:
-    # Adjust max_tokens slider dynamically based on the selected model
-    max_tokens = st.slider(
-        "Max Tokens:",
-        min_value=512,  # Minimum value to allow some flexibility
-        max_value=max_tokens_range,
-        # Default value or max allowed if less
-        value=min(32768, max_tokens_range),
-        step=512,
-        help=f"Adjust the maximum number of tokens (words) for the model's response. Max for selected model: {max_tokens_range}"
-    )
+if st.button("Initialiser"):
+    insert_predefined_text()
 
 # Display chat messages from history on app rerun
 for message in st.session_state.messages:
@@ -182,36 +187,36 @@ def generate_chat_responses(chat_completion) -> Generator[str, None, None]:
         if chunk.choices[0].delta.content:
             yield chunk.choices[0].delta.content
 
-# If there are no messages in the chat history, simulate a user input with the default prompt
-if not st.session_state.messages:
-    st.session_state.messages.append({"role": "user", "content": default_prompt})
+if prompt := st.chat_input("Enter your prompt here..."):
+    st.session_state.messages.append({"role": "user", "content": prompt})
 
-# Fetch response from Groq API
-try:
-    chat_completion = client.chat.completions.create(
-        model=model_option,
-        messages=[
-            {
-                "role": m["role"],
-                "content": m["content"]
-            }
-            for m in st.session_state.messages
-        ],
-        max_tokens=max_tokens,
-        stream=True
-    )
+    with st.chat_message("user", avatar='👨‍💻'):
+        st.markdown(prompt)
 
-    # Use the generator function with st.write_stream
-    with st.chat_message("assistant", avatar="🤖"):
-        chat_responses_generator = generate_chat_responses(chat_completion)
-        full_response = st.write_stream(chat_responses_generator)
-except Exception as e:
-    st.error(e, icon="🚨")
+    # Fetch response from Groq API
+    try:
+        chat_completion = client.chat.completions.create(
+            model=model_option,
+            messages=[
+                {"role": m["role"], "content": m["content"]} for m in st.session_state.messages
+            ],
+            max_tokens=max_tokens,
+            stream=True
+        )
 
-# Append the full response to session_state.messages
-if isinstance(full_response, str):
-    st.session_state.messages.append({"role": "assistant", "content": full_response})
-else:
-    # Handle the case where full_response is not a string
-    combined_response = "\n".join(str(item) for item in full_response)
-    st.session_state.messages.append({"role": "assistant", "content": combined_response})
+        # Use the generator function with st.write_stream
+        with st.chat_message("assistant", avatar="🤖"):
+            chat_responses_generator = generate_chat_responses(chat_completion)
+            full_response = st.write_stream(chat_responses_generator)
+    except Exception as e:
+        st.error(e, icon="🚨")
+
+    # Append the full response to session_state.messages
+    if isinstance(full_response, str):
+        st.session_state.messages.append(
+            {"role": "assistant", "content": full_response})
+    else:
+        # Handle the case where full_response is not a string
+        combined_response = "\n".join(str(item) for item in full_response)
+        st.session_state.messages.append(
+            {"role": "assistant", "content": combined_response})
