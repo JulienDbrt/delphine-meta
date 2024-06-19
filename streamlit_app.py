@@ -2,9 +2,7 @@ import streamlit as st
 from typing import Generator
 from groq import Groq
 
-st.set_page_config(page_icon="💬", layout="wide",
-                   page_title="Groq Goes Brrrrrrrr...")
-
+st.set_page_config(page_icon="💬", layout="wide", page_title="Delphine fby QOMOD")
 
 def icon(emoji: str):
     """Shows an emoji as a Notion-style page icon."""
@@ -13,14 +11,11 @@ def icon(emoji: str):
         unsafe_allow_html=True,
     )
 
+icon("👩🏼‍💻")
 
-icon("🏎️")
+st.subheader("Let's chat with Delphine", divider="rainbow", anchor=False)
 
-st.subheader("Groq Chat Streamlit App", divider="rainbow", anchor=False)
-
-client = Groq(
-    api_key=st.secrets["GROQ_API_KEY"],
-)
+client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 
 # Initialize chat history and selected model
 if "messages" not in st.session_state:
@@ -28,6 +23,9 @@ if "messages" not in st.session_state:
 
 if "selected_model" not in st.session_state:
     st.session_state.selected_model = None
+
+# Define a default prompt
+default_prompt = "Hello, how can I assist you today?"
 
 # Define model details
 models = {
@@ -53,6 +51,8 @@ with col1:
 if st.session_state.selected_model != model_option:
     st.session_state.messages = []
     st.session_state.selected_model = model_option
+    # Add the default prompt to the chat history
+    st.session_state.messages.append({"role": "user", "content": default_prompt})
 
 max_tokens_range = models[model_option]["tokens"]
 
@@ -74,48 +74,42 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"], avatar=avatar):
         st.markdown(message["content"])
 
-
 def generate_chat_responses(chat_completion) -> Generator[str, None, None]:
     """Yield chat response content from the Groq API response."""
     for chunk in chat_completion:
         if chunk.choices[0].delta.content:
             yield chunk.choices[0].delta.content
 
+# If there are no messages in the chat history, simulate a user input with the default prompt
+if not st.session_state.messages:
+    st.session_state.messages.append({"role": "user", "content": default_prompt})
 
-if prompt := st.chat_input("Enter your prompt here..."):
-    st.session_state.messages.append({"role": "user", "content": prompt})
+# Fetch response from Groq API
+try:
+    chat_completion = client.chat.completions.create(
+        model=model_option,
+        messages=[
+            {
+                "role": m["role"],
+                "content": m["content"]
+            }
+            for m in st.session_state.messages
+        ],
+        max_tokens=max_tokens,
+        stream=True
+    )
 
-    with st.chat_message("user", avatar='👨‍💻'):
-        st.markdown(prompt)
+    # Use the generator function with st.write_stream
+    with st.chat_message("assistant", avatar="🤖"):
+        chat_responses_generator = generate_chat_responses(chat_completion)
+        full_response = st.write_stream(chat_responses_generator)
+except Exception as e:
+    st.error(e, icon="🚨")
 
-    # Fetch response from Groq API
-    try:
-        chat_completion = client.chat.completions.create(
-            model=model_option,
-            messages=[
-                {
-                    "role": m["role"],
-                    "content": m["content"]
-                }
-                for m in st.session_state.messages
-            ],
-            max_tokens=max_tokens,
-            stream=True
-        )
-
-        # Use the generator function with st.write_stream
-        with st.chat_message("assistant", avatar="🤖"):
-            chat_responses_generator = generate_chat_responses(chat_completion)
-            full_response = st.write_stream(chat_responses_generator)
-    except Exception as e:
-        st.error(e, icon="🚨")
-
-    # Append the full response to session_state.messages
-    if isinstance(full_response, str):
-        st.session_state.messages.append(
-            {"role": "assistant", "content": full_response})
-    else:
-        # Handle the case where full_response is not a string
-        combined_response = "\n".join(str(item) for item in full_response)
-        st.session_state.messages.append(
-            {"role": "assistant", "content": combined_response})
+# Append the full response to session_state.messages
+if isinstance(full_response, str):
+    st.session_state.messages.append({"role": "assistant", "content": full_response})
+else:
+    # Handle the case where full_response is not a string
+    combined_response = "\n".join(str(item) for item in full_response)
+    st.session_state.messages.append({"role": "assistant", "content": combined_response})
