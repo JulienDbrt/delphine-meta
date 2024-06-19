@@ -1,7 +1,6 @@
 import streamlit as st
 from typing import Generator
 from groq import Groq
-from llmlingua import PromptCompressor
 
 st.set_page_config(page_icon="💬", layout="wide",
                    page_title="Delphine by QOMOD")
@@ -164,7 +163,7 @@ D’autre part, elle émet quelques freins à son utilisation
 Son avis sur le communication de QOMOD est assez tranché, c’est son métier ! Elle trouve que la Com de QOMOD est moyenne vu qu’elle n'en a pas entendu parlé directement. 
 “La stratégie de communication doit être essentielle pour frapper fort et être vu comme un véritable réseau de proximité”
 """
-predefined_text = llm_lingua.compress_prompt(qomod_instruct)
+predefined_text = qomod_instruct
 
 def insert_predefined_text():
     """Inserts predefined text into chat as a user message."""
