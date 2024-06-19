@@ -1,6 +1,6 @@
 import streamlit as st
 from typing import Generator
-from groq import Groq
+from groq import Groq  # Ensure the Groq module is correctly installed and imported
 
 st.set_page_config(page_icon="💬", layout="wide",
                    page_title="Delphine by QOMOD")
@@ -55,15 +55,48 @@ max_tokens_range = models[model_option]["tokens"]
 with col2:
     max_tokens = st.slider(
         "Max Tokens:",
-        min_value=512,  # Minimum value to allow some flexibility
+        min_value=512,
         max_value=max_tokens_range,
         value=min(32768, max_tokens_range),
         step=512,
         help=f"Adjust the maximum number of tokens (words) for the model's response. Max for selected model: {max_tokens_range}"
     )
 
-# Predefined message for Initialiser button
-qomod_instruct = f"""We are in a Simulation Theory game.
+# Function to handle predefined text, send it to Groq API and display response
+def handle_predefined_text():
+    st.session_state.messages.append({"role": "user", "content": predefined_text})
+    process_chat_input(predefined_text)
+
+def process_chat_input(input_text):
+    with st.chat_message("user", avatar='👨‍💻'):
+        st.markdown(input_text)
+    try:
+        chat_completion = client.chat.completions.create(
+            model=model_option,
+            messages=[
+                {"role": m["role"], "content": m["content"]} for m in st.session_state.messages
+            ],
+            max_tokens=max_tokens,
+            stream=True
+        )
+
+        with st.chat_message("assistant", avatar="🤖"):
+            chat_responses_generator = generate_chat_responses(chat_completion)
+            full_response = st.write_stream(chat_responses_generator)
+
+        if isinstance(full_response, str):
+            st.session_state.messages.append(
+                {"role": "assistant", "content": full_response})
+        else:
+            combined_response = "\n".join(str(item) for item in full_response)
+            st.session_state.messages.append(
+                {"role": "assistant", "content": combined_response})
+    except Exception as e:
+        st.error(f"Failed to generate response: {e}", icon="🚨")
+
+# Button to insert predefined text and trigger API call
+predefined_text = """
+We are in a Simulation Theory game.
 You are Delphine. You act and respond like this human, you are in a user interview. You are natural and self-oriented, express opinions, talk about your dreams or your expectations, talk about your life or your job. You are participating in a qualitative study for market research. Don't ask questions back.
 
 # Character Profile: Delphine Nemours
@@ -163,16 +196,8 @@ D’autre part, elle émet quelques freins à son utilisation
 Son avis sur le communication de QOMOD est assez tranché, c’est son métier ! Elle trouve que la Com de QOMOD est moyenne vu qu’elle n'en a pas entendu parlé directement. 
 “La stratégie de communication doit être essentielle pour frapper fort et être vu comme un véritable réseau de proximité”
 """
-predefined_text = qomod_instruct
-
-def insert_predefined_text():
-    """Inserts predefined text into chat as a user message."""
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-    st.session_state.messages.append({"role": "user", "content": predefined_text})
-
-if st.button("Initialiser"):
-    insert_predefined_text()
+if st.button("🧠 Charger la personnalité de Delphine", type="primary"):
+    handle_predefined_text()
 
 # Display chat messages from history on app rerun
 for message in st.session_state.messages:
@@ -181,41 +206,9 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
 
 def generate_chat_responses(chat_completion) -> Generator[str, None, None]:
-    """Yield chat response content from the Groq API response."""
     for chunk in chat_completion:
         if chunk.choices[0].delta.content:
             yield chunk.choices[0].delta.content
 
-if prompt := st.chat_input("Enter your prompt here..."):
-    st.session_state.messages.append({"role": "user", "content": prompt})
-
-    with st.chat_message("user", avatar='👨‍💻'):
-        st.markdown(prompt)
-
-    # Fetch response from Groq API
-    try:
-        chat_completion = client.chat.completions.create(
-            model=model_option,
-            messages=[
-                {"role": m["role"], "content": m["content"]} for m in st.session_state.messages
-            ],
-            max_tokens=max_tokens,
-            stream=True
-        )
-
-        # Use the generator function with st.write_stream
-        with st.chat_message("assistant", avatar="🤖"):
-            chat_responses_generator = generate_chat_responses(chat_completion)
-            full_response = st.write_stream(chat_responses_generator)
-    except Exception as e:
-        st.error(e, icon="🚨")
-
-    # Append the full response to session_state.messages
-    if isinstance(full_response, str):
-        st.session_state.messages.append(
-            {"role": "assistant", "content": full_response})
-    else:
-        # Handle the case where full_response is not a string
-        combined_response = "\n".join(str(item) for item in full_response)
-        st.session_state.messages.append(
-            {"role": "assistant", "content": combined_response})
+if prompt := st.chat_input("Posez-moi vos questions..."):
+    process_chat_input(prompt)
